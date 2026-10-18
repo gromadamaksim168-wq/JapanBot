@@ -1,13 +1,15 @@
+import os
 import asyncio
 import logging
 import sqlite3
 import requests
 from bs4 import BeautifulSoup
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ==================== НАЛАШТУВАННЯ ====================
-TELEGRAM_BOT_TOKEN = "8790991563:AAF_jhaPcw_9ykOilsOMNdVcnZQcCFR7x_U" # Заміни на повний свій токен
+TELEGRAM_BOT_TOKEN = "8790991563:AAFxXxXxXxXxXxXxXxXxXxXxXxXxXx" # Вкажи свій токен повністю
 CHAT_ID = "1020837165"
 
 # Фінансові параметри
@@ -19,10 +21,9 @@ INT_SHIPPING_UAH = 450       # Доставка в Україну (1.2 кг)
 
 MIN_PROFIT_USD = 50          # МІНІМАЛЬНИЙ ЧИСТИЙ ПРИБУТОК ($)
 
-# Перевірка щохвилини для швидкого перехоплення фіксованих цін
+# Перевірка щохвилини
 CHECK_INTERVAL_SECONDS = 60  
 
-# Середні орієнтовні ціни OLX (в гривнях) для розрахунку маржі
 OLX_BENCHMARK_PRICES = {
     # 20-а серія
     "RTX 2060": 6000, "RTX 2060 Super": 7800,
@@ -78,7 +79,6 @@ def calculate_cost_uah(price_jpy: int) -> int:
     return int((total_jpy * JPY_TO_UAH_RATE) + INT_SHIPPING_UAH)
 
 def is_less_than_one_hour(time_str: str) -> bool:
-    """Перевірка для аукціонних лотів: чи залишилося <= 1 година"""
     time_str = time_str.strip()
     if "日" in time_str:
         return False
@@ -117,7 +117,6 @@ def fetch_yahoo_auctions(model_name: str):
             auction_id = link.split("/")[-1]
             time_left_str = time_tag.text.strip() if time_tag else ""
             
-            # Перевірка на "Купити зараз" (即決)
             is_buy_now = False
             if bid_or_buy_tag and "即決" in bid_or_buy_tag.text:
                 is_buy_now = True
@@ -196,8 +195,22 @@ async def monitor_auctions():
 async def cmd_start(message: types.Message):
     await message.answer("🤖 Бот запущено! Відстежую аукціони (<1 год) та фіксовані ціна (Buy It Now) із маржею від $50.")
 
+async def handle_web_request(request):
+    return web.Response(text="Japan GPU Tracker Bot is Active 24/7!")
+
 async def main():
     init_db()
+    
+    # Запуск вебсервера для Render (щоб статус став Live)
+    app = web.Application()
+    app.router.add_get("/", handle_web_request)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    
+    # Запуск фонового моніторингу та Telegram-бота
     asyncio.create_task(monitor_auctions())
     await dp.start_polling(bot)
 
